@@ -6,7 +6,7 @@ pub enum StateT{
     CLOSE
 }
 
-pub fn state_to_string(state: StateT) -> String {
+pub fn state_to_string(state: &StateT) -> String {
     String::from(
         match state {
             StateT::INIT => "Init",
@@ -23,7 +23,7 @@ pub struct Machine{
 }
 
 impl Machine{
-    fn new(_i: u32) -> Self {
+    fn new() -> Self {
         Machine {
             state: StateT::CLOSE,
             name: String::new(),
@@ -32,7 +32,7 @@ impl Machine{
 }
 
 pub fn init_statems() -> [Machine; 4] {
-    [0; 4].map(|i| Machine::new(i))
+    [0; 4].map(|_i| Machine::new())
 }
 
 pub fn query(buffer: String, machines: &mut [Machine; 4]) -> String {
@@ -46,10 +46,10 @@ pub fn query(buffer: String, machines: &mut [Machine; 4]) -> String {
                 "stop" => hand_stop,
                 "enough" => hand_enough,
                 "exterminantus" => hand_exterminantus,
-/*                "get" => hand_get,
+                "get" => hand_get,
                 "exit" => hand_exit_server,
                 "list" => hand_list,
-   */             _other => hand_strange
+                _other => hand_strange
             };
 
     handler(tail, machines)
@@ -170,8 +170,30 @@ fn hand_exterminantus(_args: &str, machines: &mut [Machine; 4]) -> String {
     String::from("Ok")
 }
 
-/*fn hand_get(args: &str, machines: &mut [Machine; 4]) -> String { 
+fn hand_get(args: &str, machines: &mut [Machine; 4]) -> String {
+    if args == "" {
+        return String::from("Error: No name");
+    }
+
+    match find_machine(args, machines) {
+        (false, _) => String::from("Error: Not found"),
+        (true, i) => state_to_string(&machines[i].state)
+    }
 }
-fn hand_exit_server(args: &str, machines: &mut [Machine; 4]) -> String { String::from(""); }
-fn hand_list(args: &str, machines: &mut [Machine; 4]) -> String { String::from(""); }
-*/fn hand_strange(_args: &str, _machines: &mut [Machine; 4]) -> String { String::from("Strange query") }
+
+fn hand_list(_args: &str, machines: &mut [Machine; 4]) -> String {
+    let mut acc = String::new();
+
+    for i in machines {
+        acc = acc +
+                i.name.clone().as_str() +
+                " -> " +
+                state_to_string(&i.state).as_str() +
+                "\n";
+    }
+
+    acc
+}
+
+fn hand_exit_server(_args: &str, _machines: &mut [Machine; 4]) -> String { String::from("Bue-bue") }
+fn hand_strange(_args: &str, _machines: &mut [Machine; 4]) -> String { String::from("Strange query") }
