@@ -1,4 +1,4 @@
-#[derive(PartialEq)]
+#[derive(PartialEq, Copy, Clone)]
 pub enum StateT{
     INIT,
     RUN,
@@ -6,15 +6,13 @@ pub enum StateT{
     CLOSE
 }
 
-pub fn state_to_string(state: &StateT) -> String {
-    String::from(
-        match state {
-            StateT::INIT => "Init",
-            StateT::RUN => "Run",
-            StateT::PAUSE => "Pause",
-            StateT::CLOSE => "Close"
-        }
-    )
+pub fn state_to_string(state: &StateT) -> &'static str {
+	match state {
+		StateT::INIT => "Init",
+		StateT::RUN => "Run",
+		StateT::PAUSE => "Pause",
+		StateT::CLOSE => "Close"
+	}
 }
 
 pub struct Machine{
@@ -29,6 +27,25 @@ impl Machine{
             name: String::new(),
         }
     }
+	
+	fn update(&mut self, state: StateT) -> Result<&'static str, &'static str> {
+		match (self.state.clone(), state) {
+			// CLOSE to INIT handled directly in hand_init
+			(StateT::INIT, StateT::RUN) => {self.state = state; Ok("Ok")},
+			(StateT::RUN, StateT::PAUSE) => {self.state = state; Ok("Ok")},
+			(StateT::PAUSE, StateT::RUN) => {self.state = state; Ok("Ok")},
+			(StateT::INIT, StateT::CLOSE) => {self.state = StateT::CLOSE;
+			                                  self.name = String::new();
+                                        	  Ok("Ok")},
+			(StateT::PAUSE, StateT::CLOSE) => {self.state = StateT::CLOSE;
+			                                   self.name = String::new();
+                                        	   Ok("Ok")},
+			(old, new) => {
+			    if old == new { Err("Already in that state") }
+			    else { Err("Wrong state") }
+			},
+		}
+	}
 }
 
 pub fn init_statems() -> [Machine; 4] {
@@ -36,9 +53,15 @@ pub fn init_statems() -> [Machine; 4] {
 }
 
 pub fn query(buffer: String, machines: &mut [Machine; 4]) -> String {
-    let (head, tail) = buffer.as_str().split_once(':').expect("");
+    let (head, tail) =
+        match buffer.as_str().split_once(':') {
+            Some(i) => i,
+            None => (buffer.as_str(), ""),
+        };
+    
+	if head == "list" { return hand_list(machines); }
 
-    let handler = 
+    let handler =
             match head {
                 "init" => hand_init,
                 "run" => hand_run,
@@ -48,152 +71,99 @@ pub fn query(buffer: String, machines: &mut [Machine; 4]) -> String {
                 "exterminantus" => hand_exterminantus,
                 "get" => hand_get,
                 "exit" => hand_exit_server,
-                "list" => hand_list,
                 _other => hand_strange
             };
 
-    handler(tail, machines)
+    match handler(tail, machines) {
+		Ok(i) => String::from(i),
+		Err(i) => String::from("Error: ") + i,
+	}
 }
 
-fn find_machine(name: &str, machines: &mut [Machine; 4]) -> (bool, usize) {
+fn find_machine<'a>(name: &str, machines: &'a mut [Machine; 4]) -> Result<&'a mut Machine, &'static str> {
+    if name == "" { return Err("No name"); }
+	find_machine_2(name, machines)
+}
+
+fn find_machine_2<'a>(name: &str, machines: &'a mut [Machine; 4]) -> Result<&'a mut Machine, &'static str> {
     let mut i = 0;
     while i < 4 {
-        if machines[i].name == name { 
-            return (true, i);
+        if machines[i].name == name {
+            return Ok(&mut machines[i]);
         }
         i = i+1;
     }
-
-    (false, 0)
+    Err("Machine not found")
 }
 
-fn hand_init(args: &str, machines: &mut [Machine; 4]) -> String {
-    if args == "" {
-        return String::from("Error: No name");
-    }
-
-    let answer =
-        match find_machine(args, machines) {
-            (false, _) =>
-                match find_machine("", machines) {
-                    (false, _) => "Error: No free machine",
-
-                    (true, i) => {
-                        machines[i].name = String::from(args);
-                        machines[i].state = StateT::INIT;
-                        "Ok"
-                    }
-                },
-
-            (true, _) => "Error: Already created"
-        };
-
-    String::from(answer)
-}
-
-fn hand_run(args: &str, machines: &mut [Machine; 4]) -> String {
-    if args == "" {
-        return String::from("Error: No name");
-    }
-
-    let answer =
-        match find_machine(args, machines) {
-            (false, _) => "Error: Not found",
-            (true, i) =>
-                if machines[i].state == StateT::RUN { "Error: Already running" }
-                else { machines[i].state = StateT::RUN; "Ok" }
-        };
-
-    String::from(answer)
-}
-
-fn hand_pause(args: &str, machines: &mut [Machine; 4]) -> String {
-    if args == "" {
-        return String::from("Error: No name");
-    }
-
-    let answer =
-        match find_machine(args, machines) {
-            (false, _) => "Error: Not found",
-            (true, i) =>
-                if machines[i].state == StateT::RUN { machines[i].state = StateT::PAUSE; "Ok" }
-                else { "Error: Not running" }               
-        };
-
-    String::from(answer)
-}
-
-fn hand_stop(args: &str, machines: &mut [Machine; 4]) -> String { 
-    if args == "" {
-        return String::from("Error: No name");
-    }
-    
-    let answer =
-        match find_machine(args, machines) {
-            (false, _) => "Error: Not found",
-            (true, i) =>
-                if machines[i].state == StateT::PAUSE {
-                    machines[i].state = StateT::CLOSE;
-                    machines[i].name = String::from("");
-                    "Ok"
-                }
-                else { "Error: Not running" }
-        };
-
-    String::from(answer)
-}
-
-fn hand_enough(args: &str, machines: &mut [Machine; 4]) -> String { 
-    if args == "" {
-        return String::from("Error: No name");
-    }
-
-    let answer =
-        match find_machine(args, machines) {
-            (false, _) => "Error: Not found",
-            (true, i) => {
-                machines[i].state = StateT::CLOSE;
-                machines[i].name = String::from("");
-                "Ok"
-            }
-        };
-
-    String::from(answer)
-}
-
-fn hand_exterminantus(_args: &str, machines: &mut [Machine; 4]) -> String {
-    for mut i in machines {
-        i.state = StateT::CLOSE;
-        i.name = String::from("");
-    }
-
-    String::from("Ok")
-}
-
-fn hand_get(args: &str, machines: &mut [Machine; 4]) -> String {
-    if args == "" {
-        return String::from("Error: No name");
-    }
-
+fn hand_init(args: &str, machines: &mut [Machine; 4]) -> Result<&'static str, &'static str> {
     match find_machine(args, machines) {
-        (false, _) => String::from("Error: Not found"),
-        (true, i) => state_to_string(&machines[i].state)
+        Err("Machine not found") =>
+            match find_machine_2("", machines) {
+                Err(_) => Err("Error: No free machine"),
+
+                Ok(mach) => {
+                    mach.name = String::from(args);
+                    mach.state = StateT::INIT;
+                    Ok("Ok")
+                }
+            },
+
+        Ok(_) => Err("Already exist"),
+		Err(i) => Err(i),
     }
 }
 
-fn hand_list(_args: &str, machines: &mut [Machine; 4]) -> String {
+fn set_machine_run(machine: &mut Machine) -> Result<&'static str, &'static str> { machine.update(StateT::RUN) }
+fn set_machine_pause(machine: &mut Machine) -> Result<&'static str, &'static str> { machine.update(StateT::PAUSE) }
+fn set_machine_close(machine: &mut Machine) -> Result<&'static str, &'static str> { machine.update(StateT::CLOSE) }
+fn get_machine(machine: &mut Machine) -> Result<&'static str, &'static str> { Ok(state_to_string(&machine.state)) }
+
+fn hand_run(args: &str, machines: &mut [Machine; 4]) -> Result<&'static str, &'static str> {
+	find_machine(args, machines).and_then(set_machine_run)
+}
+
+fn hand_pause(args: &str, machines: &mut [Machine; 4]) -> Result<&'static str, &'static str> {
+	find_machine(args, machines).and_then(set_machine_pause)
+}
+
+fn hand_stop(args: &str, machines: &mut [Machine; 4]) -> Result<&'static str, &'static str> {
+	find_machine(args, machines).and_then(set_machine_close)
+}
+
+fn hand_enough(args: &str, machines: &mut [Machine; 4]) -> Result<&'static str, &'static str> {
+	match find_machine(args, machines) {
+		Ok(mach) => {
+		    mach.name = String::from("");
+			mach.state = StateT::CLOSE;
+			Ok("Ok")
+		},
+		Err(i) => Err(i),
+	}
+}
+
+fn hand_exterminantus(_args: &str, machines: &mut [Machine; 4]) -> Result<&'static str, &'static str> {
+    *machines = init_statems();
+	Ok("Ok")
+}
+
+fn hand_get(args: &str, machines: &mut [Machine; 4]) -> Result<&'static str, &'static str> {
+    find_machine(args, machines).and_then(get_machine)
+}
+
+fn hand_list(machines: &[Machine; 4]) -> String {
     let mut acc = String::new();
 
     for i in machines {
         acc = acc +
                 i.name.clone().as_str() +
                 " -> " +
-                state_to_string(&i.state).as_str() +
+                state_to_string(&i.state) +
                 "\n";
     }
-
-    acc
+    
+	acc
 }
 
-fn hand_exit_server(_args: &str, _machines: &mut [Machine; 4]) -> String { String::from("Bue-bue") }
-fn hand_strange(_args: &str, _machines: &mut [Machine; 4]) -> String { String::from("Strange query") }
+fn hand_exit_server(_args: &str, _machines: &mut [Machine; 4]) -> Result<&'static str, &'static str> { Ok("Bue-bue") }
+fn hand_strange(_args: &str, _machines: &mut [Machine; 4]) -> Result<&'static str, &'static str> { Err("Strange query") }
