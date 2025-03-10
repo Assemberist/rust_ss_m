@@ -31,15 +31,11 @@ impl Machine{
 	fn update(&mut self, state: StateT) -> Result<&'static str, &'static str> {
 		match (self.state.clone(), state) {
 			// CLOSE to INIT handled directly in hand_init
-			(StateT::INIT, StateT::RUN) => {self.state = state; Ok("Ok")},
-			(StateT::RUN, StateT::PAUSE) => {self.state = state; Ok("Ok")},
-			(StateT::PAUSE, StateT::RUN) => {self.state = state; Ok("Ok")},
-			(StateT::INIT, StateT::CLOSE) => {self.state = StateT::CLOSE;
+			(StateT::INIT | StateT::PAUSE, StateT::RUN) => {self.state = state; Ok("Ok")},
+			(StateT::INIT | StateT::PAUSE, StateT::CLOSE) => {self.state = StateT::CLOSE;
 			                                  self.name = String::new();
                                         	  Ok("Ok")},
-			(StateT::PAUSE, StateT::CLOSE) => {self.state = StateT::CLOSE;
-			                                   self.name = String::new();
-                                        	   Ok("Ok")},
+			(StateT::RUN, StateT::PAUSE) => {self.state = state; Ok("Ok")},
 			(old, new) => {
 			    if old == new { Err("Already in that state") }
 			    else { Err("Wrong state") }
@@ -167,3 +163,39 @@ fn hand_list(machines: &[Machine; 4]) -> String {
 
 fn hand_exit_server(_args: &str, _machines: &mut [Machine; 4]) -> Result<&'static str, &'static str> { Ok("Bue-bue") }
 fn hand_strange(_args: &str, _machines: &mut [Machine; 4]) -> Result<&'static str, &'static str> { Err("Strange query") }
+
+
+
+
+use std::net::TcpListener;
+use std::io::{Read, Write};
+use std::ffi::CStr;
+
+fn main() -> std::io::Result<()>  {
+    let mut mach: [Machine; 4] = init_statems();
+
+	let mut buffer: [u8; 256] = [0; 256];
+    let listener = TcpListener::bind("127.0.0.1:5000")?;
+
+    // accept connections and process them serially
+    for stream in listener.incoming() {
+        let mut sock = stream?;
+        sock.read(&mut buffer)?;
+        
+        let request = CStr::from_bytes_until_nul(&buffer[..]).unwrap();
+        let request = request.to_str().unwrap();
+        let request = String::from(request);
+        let response = query(request, &mut mach);
+
+        sock.write(response.as_bytes())?;
+    }
+	
+	/*
+    {
+        println!("init:sas -> {}", query(String::from("init:sas"), &mut mach));
+        println!("run:sas -> {}", query(String::from("run:sas"), &mut mach));
+        println!("list ->\n{}", query(String::from("list:"), &mut mach));
+    }
+    */
+    Ok(())
+}
